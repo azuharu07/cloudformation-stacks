@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  Sample of CloudFormation
+  
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16 # Required
+      Tags:
+        - Key: Name
+          Value: traning-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: traning-internetgw
+
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC # Required
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.5.0/24 # Required
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: traning-pubsub
+      VpcId: !Ref VPC # Required
+
+  RouteTableForPubSub:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: traning-pubsub-routetable
+      VpcId: !Ref VPC # Required
+
+  RouteForPubSub:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTableForPubSub # Required
+
+  AssociateRouteTableForPubSub:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPubSub # Required
+      SubnetId: !Ref PublicSubnet # Required
+
+  SecurityGroupForPubSub:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SecurityGroupForPubSub # Required
+      GroupName: SecurityGroupForPubSub
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: traning-sg-pubsub
+      VpcId: !Ref VPC
+
+  PublicServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0ff21806645c5e492
+      InstanceType: t2.micro
+      KeyName: traning-ec2-key
+      NetworkInterfaces:
+        - SubnetId: !Ref PublicSubnet
+          GroupSet:
+            - !Ref SecurityGroupForPubSub
+          AssociatePublicIpAddress: true
+          DeviceIndex: 0
+      Tags:
+        - Key: Name
+          Value: traning-ec2-pubsub
+  
+  ElasticIpForPublicServer:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref PublicServer
+      Tags:
+        - Key: Name
+          Value: traning-ec2-eip
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.10.0/24 # Required
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: traning-prisub
+      VpcId: !Ref VPC # Required
+  
+  SecurityGroupForPriSub:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SecurityGroupForPriSub # Required
+      GroupName: SecurityGroupForPriSub
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref SecurityGroupForPubSub
+      Tags:
+        - Key: Name
+          Value: traning-sg-prisub
+      VpcId: !Ref VPC
+
+  PrivateServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0ff21806645c5e492
+      InstanceType: t2.micro
+      KeyName: traning-ec2-key
+      SubnetId: !Ref PrivateSubnet
+      SecurityGroupIds:
+        - !Ref SecurityGroupForPriSub
+      Tags:
+        - Key: Name
+          Value: traning-ec2-prisub
