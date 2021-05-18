@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  TraningSample of CloudFormation
+  
+Resources:
+  TraningVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16 # Required
+      Tags:
+        - Key: Name
+          Value: traning-vpc
+
+  TraningInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: traning-internetgw
+
+  TraningAttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref TraningInternetGateway
+      VpcId: !Ref TraningVPC # Required
+
+  TraningPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.5.0/24 # Required
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: traning-pubsub
+      VpcId: !Ref TraningVPC # Required
+
+  TraningRouteTableForPubSub:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: traning-pubsub-routetable
+      VpcId: !Ref TraningVPC # Required
+
+  TraningRouteForPubSub:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref TraningInternetGateway
+      RouteTableId: !Ref TraningRouteTableForPubSub # Required
+
+  TraningAssociateRouteTableForPubSub:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref TraningRouteTableForPubSub # Required
+      SubnetId: !Ref TraningPublicSubnet # Required
+
+  TraningSecurityGroupForPubSub:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SecurityGroupForPubSub # Required
+      GroupName: SecurityGroupForPubSub
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: traning-sg-pubsub
+      VpcId: !Ref TraningVPC
+
+  TraningLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-0ff21806645c5e492
+      InstanceType: t2.micro
+      KeyName: traning-ec2-key
+      SecurityGroups: 
+        - !Ref TraningSecurityGroupForPubSub
+          
+  TraningAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      HealthCheckGracePeriod: 300
+      LaunchConfigurationName: !Ref TraningLaunchConfiguration
+      MaxInstanceLifetime: 2592000
+      MaxSize: "5" # Required
+      MinSize: "1" # Required
+      Tags:
+        - Key: Name
+          Value: traning-autoscaling-group
+          PropagateAtLaunch: "true"
+      VPCZoneIdentifier:
+        - !Ref TraningPublicSubnet
+
+  TraningScaleOutPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref TraningAutoScalingGroup # Required
+      ScalingAdjustment: "1"
+
+  TraningCPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions: 
+        - !Ref TraningScaleOutPolicy
+      AlarmDescription: Alarm if CPU too high or metric disappears indicating instance is down
+      ComparisonOperator: GreaterThanThreshold # Required
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value:
+            Ref: TraningAutoScalingGroup
+      EvaluationPeriods: "1" # Required
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Period: "60"
+      Statistic: Average
+      Threshold: "10"
